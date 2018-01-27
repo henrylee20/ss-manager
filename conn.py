@@ -39,6 +39,11 @@ class ManageConn:
         self.__sock.send(bytes(cmd, encoding='ascii'))
 
         recv = str(self.__sock.recv(BUF_SIZE))
+
+        exist_ports = self.get_stat().keys()
+        if str(port) in exist_ports:
+            return False
+
         if recv.find('OK') is -1:
             return False
         else:
@@ -49,6 +54,11 @@ class ManageConn:
         self.__sock.send(bytes(cmd, encoding='ascii'))
 
         recv = str(self.__sock.recv(BUF_SIZE))
+
+        exist_ports = self.get_stat().keys()
+        if str(port) not in exist_ports:
+            return False
+
         if recv.find('OK') is -1:
             return False
         else:
