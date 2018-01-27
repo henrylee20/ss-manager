@@ -12,11 +12,13 @@ def main(argv=None):
         print('login err')
         return 1
 
-    port = admin.add_user('123123123', datetime.datetime(2018, 1, 28, 0, 0), 1024*1024*1024)
-    print(port)
+    user = admin.add_user('123123123', datetime.datetime(2018, 1, 28, 0, 0), 1024*1024*1024)
+    print(user)
 
-    print(admin.enable_user(port))
-    print(admin.start_user(port))
+    print("enable user: " + str(admin.enable_user(user.port)))
+    print("start user" + str(admin.start_user(user.port)))
+    print("start user" + str(admin.start_user(user.port)))
+    #print("stop user" + str(admin.stop_user(user.port)))
 
 
 if __name__ == '__main__':

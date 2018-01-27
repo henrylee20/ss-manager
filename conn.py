@@ -24,9 +24,9 @@ class ManageConn:
         return True
 
     def get_stat(self):
-        self.__sock.send("ping")
+        self.__sock.send(bytes("ping", encoding='ascii'))
 
-        recv_data = self.__sock.recv(BUF_SIZE)
+        recv_data = str(self.__sock.recv(BUF_SIZE))
         pos = recv_data.find("{")
         if pos is -1:
             return {}
@@ -36,9 +36,9 @@ class ManageConn:
 
     def add_port(self, port, pwd):
         cmd = 'add: {"server_port": %d, "password": "%s"}' % (port, pwd)
-        self.__sock.send(cmd)
+        self.__sock.send(bytes(cmd, encoding='ascii'))
 
-        recv = self.__sock.recv(BUF_SIZE)
+        recv = str(self.__sock.recv(BUF_SIZE))
         if recv.find('OK') is -1:
             return False
         else:
@@ -46,9 +46,9 @@ class ManageConn:
 
     def remove_port(self, port):
         cmd = 'remove: {"server_port": %d}' % (port)
-        self.__sock.send(cmd)
+        self.__sock.send(bytes(cmd, encoding='ascii'))
 
-        recv = self.__sock.recv(BUF_SIZE)
+        recv = str(self.__sock.recv(BUF_SIZE))
         if recv.find('OK') is -1:
             return False
         else:

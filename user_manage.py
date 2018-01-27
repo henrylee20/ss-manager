@@ -55,6 +55,7 @@ class DBOperator:
             self.__cursor.execute('select port from User')
 
         result = self.__cursor.fetchall()
+        print(admin + " get_all_users() result: " + str(result))
         if len(result):
             return [row[0] for row in result]
         else:
@@ -109,6 +110,7 @@ class Manager:
                 self.__admins[admin[0]] = admin[1]
         except sqlite3.OperationalError:
             self.__db.init_db()
+        self.__conn.connect()
 
     @staticmethod
     def __find_available_port(exist_ports):
@@ -142,10 +144,12 @@ class Manager:
 
     def __verify_admin(self, admin, user):
         if admin.name is not user.admin:
+            print('verify_admin failed, admin.name: ' + admin.name + ', user.admin: ' + user.admin)
             return False
 
         ports = self.__db.get_all_users(admin.name)
-        if user.port in ports:
+        if user.port not in ports:
+            print('verify_admin failed, ports: ' + str(ports) + ', user.port: ' + str(user.port))
             return False
 
         return True
@@ -169,9 +173,6 @@ class Manager:
             return None
 
     def add_user(self, admin, user):
-        if not self.__verify_admin(admin, user):
-            return False
-
         self.__lock_port.acquire()
 
         port = self.__alloc_port()
