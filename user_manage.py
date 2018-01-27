@@ -308,6 +308,8 @@ class Admin:
 
     def __verify_port(self, port):
         if port not in self.__users.keys():
+            print('port %d not found' % port)
+            print('ports: ' + str(self.__users.keys()))
             return False
         return True
 
