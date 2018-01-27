@@ -103,10 +103,12 @@ class Manager:
         self.__lock_port = threading.Lock()
         self.__port_trans = {}
 
-        admins = self.__db.get_all_admins()
-
-        for admin in admins:
-            self.__admins[admin[0]] = admin[1]
+        try:
+            admins = self.__db.get_all_admins()
+            for admin in admins:
+                self.__admins[admin[0]] = admin[1]
+        except sqlite3.OperationalError:
+            self.__db.init_db()
 
     @staticmethod
     def __find_available_port(exist_ports):
@@ -150,6 +152,7 @@ class Manager:
 
     def add_admin(self, username, pwd):
         self.__db.add_admin(username, pwd)
+        self.__admins[username] = pwd
 
     def admin_login(self, username, pwd):
         if username in self.__admins.keys() and pwd is self.__admins[username]:
