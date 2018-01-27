@@ -15,8 +15,8 @@ def main(argv=None):
     port = admin.add_user('123123123', datetime.datetime(2018, 1, 28, 0, 0), 1024*1024*1024)
     print(port)
 
-    admin.enable_user(port)
-    admin.start_user(port)
+    print(admin.enable_user(port))
+    print(admin.start_user(port))
 
 
 if __name__ == '__main__':
