@@ -58,7 +58,7 @@ class DBOperator:
         if len(result):
             return [row[0] for row in result]
         else:
-            return None
+            return []
 
     def get_user_data(self, port):
         self.__cursor.execute('select pwd, expire_time, trans_limit, trans_used, enabled, admin '
