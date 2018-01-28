@@ -11,7 +11,11 @@ class DBOperator:
     def __init__(self, filename):
         self.__db = sqlite3.connect(filename)
 
+    def __del__(self):
+        self.__db.close()
+
     def init_db(self):
+        print("Init DB")
         cursor = self.__db.cursor()
         cursor.execute('create table User '
                        '(port INT PRIMARY KEY, pwd VARCHAR(24), expire_time FLOAT, '
@@ -19,6 +23,7 @@ class DBOperator:
         cursor.execute('create table Admin '
                        '(username VARCHAR(24) PRIMARY KEY, pwd VARCHAR(24))')
         cursor.close()
+        self.__db.commit()
 
     def add_user(self, port, pwd, expire_time, trans_limit, trans_used, admin_name):
         cursor = self.__db.cursor()
@@ -26,46 +31,55 @@ class DBOperator:
                        'VALUES (%d, "%s", %f, %d, %d, %d, "%s")' %
                        (port, pwd, expire_time.timestamp(), trans_limit, trans_used, 0, admin_name))
         cursor.close()
+        self.__db.commit()
 
     def del_user(self, port):
         cursor = self.__db.cursor()
         cursor.execute('delete from User where port = %d' % (port))
         cursor.close()
+        self.__db.commit()
 
     def enable_user(self, port):
         cursor = self.__db.cursor()
         cursor.execute('update User set enabled = 1 where port = %d' % (port))
         cursor.close()
+        self.__db.commit()
 
     def disable_user(self, port):
         cursor = self.__db.cursor()
         cursor.execute('update User set enabled = 0 where port = %d' % (port))
         cursor.close()
+        self.__db.commit()
 
     def change_pwd(self, port, pwd):
         cursor = self.__db.cursor()
         cursor.execute('update User set pwd = "%s" where port = %d' % (pwd, port))
         cursor.close()
+        self.__db.commit()
 
     def update_used(self, port, used):
         cursor = self.__db.cursor()
         cursor.execute('update User set trans_used = %d where port = %d' % (used, port))
         cursor.close()
+        self.__db.commit()
 
     def change_limit(self, port, new_limit):
         cursor = self.__db.cursor()
         cursor.execute('update User set trans_limit = %d where port = %d' % (new_limit, port))
         cursor.close()
+        self.__db.commit()
 
     def change_expire(self, port, new_time):
         cursor = self.__db.cursor()
         cursor.execute('update User set expire_time = %f where port = %d' % (new_time.timestamp(), port))
         cursor.close()
+        self.__db.commit()
 
     def change_admin(self, port, admin):
         cursor = self.__db.cursor()
         cursor.execute('update User set admin = "%s", where port = %d' % (admin, port))
         cursor.close()
+        self.__db.commit()
 
     def get_all_users(self, admin=""):
         cursor = self.__db.cursor()
@@ -98,16 +112,19 @@ class DBOperator:
         cursor = self.__db.cursor()
         cursor.execute('insert into Admin (username, pwd) VALUES ("%s", "%s")' % (name, pwd))
         cursor.close()
+        self.__db.commit()
 
     def del_admin(self, name):
         cursor = self.__db.cursor()
         cursor.execute('delete from Admin where username = "%s"' % (name))
         cursor.close()
+        self.__db.commit()
 
     def change_admin_pwd(self, name, pwd):
         cursor = self.__db.cursor()
         cursor.execute('update Admin set pwd = "%s" where username = "%s"' % (pwd, name))
         cursor.close()
+        self.__db.commit()
 
     def get_all_admins(self):
         cursor = self.__db.cursor()
@@ -142,6 +159,7 @@ class Manager:
                 self.__admins[admin[0]] = admin[1]
         except sqlite3.OperationalError:
             self.__db.init_db()
+
         self.__conn.connect()
 
     @staticmethod

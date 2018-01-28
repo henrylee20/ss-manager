@@ -11,6 +11,9 @@ class ManageConn:
         self.__client_addr = client_addr
         self.__manage_addr = manager_addr
 
+    def __del__(self):
+        self.close()
+
     def connect(self):
         if self.__sock is None:
             return False
