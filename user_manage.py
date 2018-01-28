@@ -10,61 +10,84 @@ from enum import Enum
 class DBOperator:
     def __init__(self, filename):
         self.__db = sqlite3.connect(filename)
-        self.__cursor = self.__db.cursor()
 
     def init_db(self):
-        self.__cursor.execute('create table User '
-                              '(port INT PRIMARY KEY, pwd VARCHAR(24), expire_time FLOAT, '
-                              'trans_limit BIGINT, trans_used BIGINT, enabled INT, admin VARCHAR(24))')
-        self.__cursor.execute('create table Admin '
-                              '(username VARCHAR(24) PRIMARY KEY, pwd VARCHAR(24))')
+        cursor = self.__db.cursor()
+        cursor.execute('create table User '
+                       '(port INT PRIMARY KEY, pwd VARCHAR(24), expire_time FLOAT, '
+                       'trans_limit BIGINT, trans_used BIGINT, enabled INT, admin VARCHAR(24))')
+        cursor.execute('create table Admin '
+                       '(username VARCHAR(24) PRIMARY KEY, pwd VARCHAR(24))')
+        cursor.close()
 
     def add_user(self, port, pwd, expire_time, trans_limit, trans_used, admin_name):
-        self.__cursor.execute('insert into User (port, pwd, expire_time, trans_limit, trans_used, enabled, admin) '
-                              'VALUES (%d, "%s", %f, %d, %d, %d, "%s")' %
-                              (port, pwd, expire_time.timestamp(), trans_limit, trans_used, 0, admin_name))
+        cursor = self.__db.cursor()
+        cursor.execute('insert into User (port, pwd, expire_time, trans_limit, trans_used, enabled, admin) '
+                       'VALUES (%d, "%s", %f, %d, %d, %d, "%s")' %
+                       (port, pwd, expire_time.timestamp(), trans_limit, trans_used, 0, admin_name))
+        cursor.close()
 
     def del_user(self, port):
-        self.__cursor.execute('delete from User where port = %d' % (port))
+        cursor = self.__db.cursor()
+        cursor.execute('delete from User where port = %d' % (port))
+        cursor.close()
 
     def enable_user(self, port):
-        self.__cursor.execute('update User set enabled = 1 where port = %d' % (port))
+        cursor = self.__db.cursor()
+        cursor.execute('update User set enabled = 1 where port = %d' % (port))
+        cursor.close()
 
     def disable_user(self, port):
-        self.__cursor.execute('update User set enabled = 0 where port = %d' % (port))
+        cursor = self.__db.cursor()
+        cursor.execute('update User set enabled = 0 where port = %d' % (port))
+        cursor.close()
 
     def change_pwd(self, port, pwd):
-        self.__cursor.execute('update User set pwd = "%s" where port = %d' % (pwd, port))
+        cursor = self.__db.cursor()
+        cursor.execute('update User set pwd = "%s" where port = %d' % (pwd, port))
+        cursor.close()
 
     def update_used(self, port, used):
-        self.__cursor.execute('update User set trans_used = %d where port = %d' % (used, port))
+        cursor = self.__db.cursor()
+        cursor.execute('update User set trans_used = %d where port = %d' % (used, port))
+        cursor.close()
 
     def change_limit(self, port, new_limit):
-        self.__cursor.execute('update User set trans_limit = %d where port = %d' % (new_limit, port))
+        cursor = self.__db.cursor()
+        cursor.execute('update User set trans_limit = %d where port = %d' % (new_limit, port))
+        cursor.close()
 
     def change_expire(self, port, new_time):
-        self.__cursor.execute('update User set expire_time = %f where port = %d' % (new_time.timestamp(), port))
+        cursor = self.__db.cursor()
+        cursor.execute('update User set expire_time = %f where port = %d' % (new_time.timestamp(), port))
+        cursor.close()
 
     def change_admin(self, port, admin):
-        self.__cursor.execute('update User set admin = "%s", where port = %d' % (admin, port))
+        cursor = self.__db.cursor()
+        cursor.execute('update User set admin = "%s", where port = %d' % (admin, port))
+        cursor.close()
 
     def get_all_users(self, admin=""):
+        cursor = self.__db.cursor()
         if len(admin):
-            self.__cursor.execute('select port from User where admin = "%s"' % admin)
+            cursor.execute('select port from User where admin = "%s"' % admin)
         else:
-            self.__cursor.execute('select port from User')
+            cursor.execute('select port from User')
 
-        result = self.__cursor.fetchall()
+        result = cursor.fetchall()
         print(admin + " get_all_users() result: " + str(result))
+        cursor.close()
         if len(result):
             return [row[0] for row in result]
         else:
             return []
 
     def get_user_data(self, port):
-        self.__cursor.execute('select pwd, expire_time, trans_limit, trans_used, enabled, admin '
+        cursor = self.__db.cursor()
+        cursor.execute('select pwd, expire_time, trans_limit, trans_used, enabled, admin '
                               'from User where port = %d' % port)
-        result = self.__cursor.fetchall()
+        result = cursor.fetchall()
+        cursor.close()
         if len(result):
             return result[0][0], datetime.datetime.fromtimestamp(result[0][1]), \
                    result[0][2], result[0][3], result[0][4] is 1, result[0][5]
@@ -72,17 +95,26 @@ class DBOperator:
             return None
 
     def add_admin(self, name, pwd):
-        self.__cursor.execute('insert into Admin (username, pwd) VALUES ("%s", "%s")' % (name, pwd))
+        cursor = self.__db.cursor()
+        cursor.execute('insert into Admin (username, pwd) VALUES ("%s", "%s")' % (name, pwd))
+        cursor.close()
 
     def del_admin(self, name):
-        self.__cursor.execute('delete from Admin where username = "%s"' % (name))
+        cursor = self.__db.cursor()
+        cursor.execute('delete from Admin where username = "%s"' % (name))
+        cursor.close()
 
     def change_admin_pwd(self, name, pwd):
-        self.__cursor.execute('update Admin set pwd = "%s" where username = "%s"' % (pwd, name))
+        cursor = self.__db.cursor()
+        cursor.execute('update Admin set pwd = "%s" where username = "%s"' % (pwd, name))
+        cursor.close()
 
     def get_all_admins(self):
-        self.__cursor.execute('select username, pwd from Admin')
-        return self.__cursor.fetchall()
+        cursor = self.__db.cursor()
+        cursor.execute('select username, pwd from Admin')
+        result = cursor.fetchall()
+        cursor.close()
+        return result
 
     @staticmethod
     def debug():
@@ -197,15 +229,13 @@ class Manager:
         if not self.__verify_admin(admin, user):
             return False
 
-        self.__conn.add_port(user.port, user.pwd)
-        return True
+        return self.__conn.add_port(user.port, user.pwd)
 
     def stop_user(self, admin, user):
         if not self.__verify_admin(admin, user):
             return False
 
-        self.__conn.remove_port(user.port)
-        return True
+        return self.__conn.remove_port(user.port)
 
     def enable_user(self, admin, user):
         if not self.__verify_admin(admin, user):

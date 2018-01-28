@@ -35,14 +35,14 @@ class ManageConn:
         return json.loads(data)
 
     def add_port(self, port, pwd):
-        cmd = 'add: {"server_port": %d, "password": "%s"}' % (port, pwd)
-        self.__sock.send(bytes(cmd, encoding='ascii'))
-
-        recv = str(self.__sock.recv(BUF_SIZE))
 
         exist_ports = self.get_stat().keys()
         if str(port) in exist_ports:
             return False
+
+        cmd = 'add: {"server_port": %d, "password": "%s"}' % (port, pwd)
+        self.__sock.send(bytes(cmd, encoding='ascii'))
+        recv = str(self.__sock.recv(BUF_SIZE))
 
         if recv.find('OK') is -1:
             return False
@@ -50,14 +50,13 @@ class ManageConn:
             return True
 
     def remove_port(self, port):
-        cmd = 'remove: {"server_port": %d}' % (port)
-        self.__sock.send(bytes(cmd, encoding='ascii'))
-
-        recv = str(self.__sock.recv(BUF_SIZE))
-
         exist_ports = self.get_stat().keys()
         if str(port) not in exist_ports:
             return False
+
+        cmd = 'remove: {"server_port": %d}' % (port)
+        self.__sock.send(bytes(cmd, encoding='ascii'))
+        recv = str(self.__sock.recv(BUF_SIZE))
 
         if recv.find('OK') is -1:
             return False
