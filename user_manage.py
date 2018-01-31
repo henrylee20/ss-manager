@@ -182,7 +182,7 @@ class Manager:
 
         self.__get_all_admin()
 
-        self.__manage_thread = threading.Thread(target=self.manage_thread, args=(self,))
+        self.__manage_thread = threading.Thread(target=self.manage_thread, args=(self, None))
         self.__manage_thread_is_run = False
 
     def start_manage(self):
