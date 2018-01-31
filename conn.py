@@ -35,6 +35,8 @@ class ManageConn:
             return {}
 
         data = recv_data[pos:]
+
+        print(self.__func__ + ': data: ' + data)
         return json.loads(data)
 
     def add_port(self, port, pwd):
