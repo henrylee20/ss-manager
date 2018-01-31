@@ -10,7 +10,7 @@ from enum import Enum
 # TODO SQL operate need to be changed for safe reason
 class DBOperator:
     def __init__(self, filename):
-        self.__db = sqlite3.connect(filename)
+        self.__db = sqlite3.connect(filename, check_same_thread=False)
 
     def __del__(self):
         self.__db.close()
@@ -182,7 +182,7 @@ class Manager:
 
         self.__get_all_admin()
 
-        self.__manage_thread = threading.Thread(target=self.manage_thread, args=(self, None))
+        self.__manage_thread = threading.Thread(target=self.manage_thread, args=(self,))
         self.__manage_thread_is_run = False
 
     def start_manage(self):
@@ -204,7 +204,7 @@ class Manager:
     def stop_manage(self):
         self.__manage_thread_is_run = False
 
-    def manage_thread(self):
+    def manage_thread(self, arg):
         while self.__manage_thread_is_run:
             self.__update_stat()
             time.sleep(60)
