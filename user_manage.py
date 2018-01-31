@@ -170,7 +170,8 @@ class Manager:
         user_exist = 5
         alloc_port_failed = 6
         server_refused = 7
-        port_closed = 8
+        server_not_connect = 8
+        port_closed = 9
 
     def __init__(self, client_addr, manage_addr, db_filename):
         self.__conn = conn.ManageConn(client_addr, manage_addr)
@@ -181,11 +182,13 @@ class Manager:
 
         self.__get_all_admin()
 
-        self.__conn.connect()
         self.__manage_thread = threading.Thread(target=self.manage_thread, args=(self,))
         self.__manage_thread_is_run = False
 
     def start_manage(self):
+        if not self.__conn.connect():
+            return Manager.ErrType.server_not_connect
+
         enabled_users = self.__db.get_enabled_users()
 
         for user in enabled_users:
@@ -195,6 +198,8 @@ class Manager:
         self.__manage_thread_is_run = True
         self.__manage_thread.start()
         self.__manage_thread.join()
+
+        return Manager.ErrType.OK
 
     def stop_manage(self):
         self.__manage_thread_is_run = False

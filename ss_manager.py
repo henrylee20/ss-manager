@@ -5,6 +5,7 @@ import datetime
 
 def main(argv=None):
     manager = user_manage.Manager('/tmp/client.sock', '/tmp/manage.sock', '/tmp/test.sqlite')
+    print('Server start: ' + str(manager.start_manage()))
 
     manager.add_admin('henrylee', 'likaijie')
 
@@ -12,12 +13,12 @@ def main(argv=None):
 
     port = manager.add_user('henrylee', '123123', datetime.datetime(2018, 2, 1))
     if port is 0:
-        print("add port failed")
+        print("Add port failed")
         return 1
 
     print("Added port: " + str(port))
-    print(manager.start_user('henrylee', port))
-    print(manager.enable_user('henrylee', port))
+    print("Start port: " + str(manager.start_user('henrylee', port)))
+    print("Enable port: " + str(manager.enable_user('henrylee', port)))
 
 
 if __name__ == '__main__':
