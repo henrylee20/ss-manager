@@ -42,6 +42,7 @@ class ManageConn:
 
         exist_ports = self.get_stat().keys()
         if str(port) in exist_ports:
+            print("ERROR: Conn: port exist")
             return False
 
         cmd = 'add: {"server_port": %d, "password": "%s"}' % (port, pwd)
@@ -49,6 +50,7 @@ class ManageConn:
         recv = self.__sock.recv(BUF_SIZE).decode('ascii')
 
         if recv.find('OK') is -1:
+            print("ERROR: Conn: port add failed. " + recv)
             return False
         else:
             return True
@@ -56,6 +58,7 @@ class ManageConn:
     def remove_port(self, port):
         exist_ports = self.get_stat().keys()
         if str(port) not in exist_ports:
+            print("ERROR: Conn: port not exist")
             return False
 
         cmd = 'remove: {"server_port": %d}' % (port)
@@ -63,6 +66,7 @@ class ManageConn:
         recv = self.__sock.recv(BUF_SIZE).decode('ascii')
 
         if recv.find('OK') is -1:
+            print("ERROR: Conn: port rm failed. " + recv)
             return False
         else:
             return True

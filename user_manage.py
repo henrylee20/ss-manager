@@ -278,6 +278,7 @@ class Manager:
         if username in self.__admins.keys() and pwd is self.__admins[username]:
             return Manager.ErrType.OK
         else:
+            print("ERROR: admins:" + str(self.__admins) + (', input: %s, %s' % (username, pwd)))
             return Manager.ErrType.wrong_username_or_pwd
 
     def add_user(self, admin, pwd, expire_time, trans_limit=-1, trans_used=0):
