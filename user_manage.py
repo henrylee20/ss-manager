@@ -1,6 +1,7 @@
 import threading
 import sqlite3
 import datetime
+import time
 import conn
 
 from enum import Enum
@@ -99,20 +100,34 @@ class DBOperator:
     def get_user_data(self, port):
         cursor = self.__db.cursor()
         cursor.execute('select pwd, expire_time, trans_limit, trans_used, enabled, admin '
-                              'from User where port = %d' % port)
+                       'from User where port = %d' % port)
         result = cursor.fetchall()
         cursor.close()
         if len(result):
             return result[0][0], datetime.datetime.fromtimestamp(result[0][1]), \
                    result[0][2], result[0][3], result[0][4] is 1, result[0][5]
         else:
-            return None
+            return None, None, None, None, None, None
+
+    def get_enabled_users(self):
+        cursor = self.__db.cursor()
+        cursor.execute('select port, admin from User where enabled = 1')
+        result = cursor.fetchall()
+        cursor.close()
+
+        return result
 
     def add_admin(self, name, pwd):
         cursor = self.__db.cursor()
-        cursor.execute('insert into Admin (username, pwd) VALUES ("%s", "%s")' % (name, pwd))
+
+        try:
+            cursor.execute('insert into Admin (username, pwd) VALUES ("%s", "%s")' % (name, pwd))
+        except sqlite3.IntegrityError:
+            return False
+
         cursor.close()
         self.__db.commit()
+        return True
 
     def del_admin(self, name):
         cursor = self.__db.cursor()
@@ -146,6 +161,17 @@ class DBOperator:
 
 
 class Manager:
+    class ErrType(Enum):
+        OK = 0
+        permission_denied = 1
+        user_expired = 2
+        user_reached_limit = 3
+        wrong_username_or_pwd = 4
+        user_exist = 5
+        alloc_port_failed = 6
+        server_refused = 7
+        port_closed = 8
+
     def __init__(self, client_addr, manage_addr, db_filename):
         self.__conn = conn.ManageConn(client_addr, manage_addr)
         self.__db = DBOperator(db_filename)
@@ -153,14 +179,38 @@ class Manager:
         self.__lock_port = threading.Lock()
         self.__port_trans = {}
 
+        self.__get_all_admin()
+
+        self.__conn.connect()
+        self.__manage_thread = threading.Thread(target=self.manage_thread, args=(self,))
+        self.__manage_thread_is_run = False
+
+    def start_manage(self):
+        enabled_users = self.__db.get_enabled_users()
+
+        for user in enabled_users:
+            result = self.start_user(user[1], user[0])
+            print(str(user[0]) + ': ' + str(result))
+
+        self.__manage_thread_is_run = True
+        self.__manage_thread.start()
+        self.__manage_thread.join()
+
+    def stop_manage(self):
+        self.__manage_thread_is_run = False
+
+    def manage_thread(self):
+        while self.__manage_thread_is_run:
+            self.__update_stat()
+            time.sleep(60)
+
+    def __get_all_admin(self):
         try:
             admins = self.__db.get_all_admins()
             for admin in admins:
                 self.__admins[admin[0]] = admin[1]
         except sqlite3.OperationalError:
             self.__db.init_db()
-
-        self.__conn.connect()
 
     @staticmethod
     def __find_available_port(exist_ports):
@@ -189,285 +239,141 @@ class Manager:
         stat = self.__conn.get_stat()
         self.__port_trans.clear()
 
+        now = datetime.datetime.now()
+
         for port in stat.keys():
             self.__port_trans[int(port)] = stat[port]
+            _, expire_time, trans_limit, trans_used, _, admin = self.__db.get_user_data(port)
+
+            # TODO: err handle: get NULL DATA
+            if expire_time is None:
+                continue
+
+            dt = expire_time - now
+            if dt.total_seconds() <= 0 or (trans_limit != -1 and trans_used + stat[port] > trans_limit):
+                self.stop_user(admin, port)
+                self.disable_user(admin, port)
 
     def __verify_admin(self, admin, user):
-        if admin.name is not user.admin:
-            print('verify_admin failed, admin.name: ' + admin.name + ', user.admin: ' + user.admin)
-            return False
-
-        ports = self.__db.get_all_users(admin.name)
-        if user.port not in ports:
-            print('verify_admin failed, ports: ' + str(ports) + ', user.port: ' + str(user.port))
+        users = self.__db.get_all_users(admin)
+        if user not in users:
+            print('verify_admin failed, admin: ' + admin + ', user: ' + user)
             return False
 
         return True
 
     def add_admin(self, username, pwd):
-        self.__db.add_admin(username, pwd)
-        self.__admins[username] = pwd
+        if self.__db.add_admin(username, pwd):
+            self.__admins[username] = pwd
+            return Manager.ErrType.OK
+        else:
+            return Manager.ErrType.user_exist
 
     def admin_login(self, username, pwd):
         if username in self.__admins.keys() and pwd is self.__admins[username]:
-            ports = self.__db.get_all_users(username)
-
-            users = {}
-            for port in ports:
-                info = self.__db.get_user_data(port)
-                user = User(port, info[0], info[1], info[2], info[3], info[4], False, username)
-                users[port] = user
-
-            return Admin(username, users, self)
+            return Manager.ErrType.OK
         else:
-            return None
+            return Manager.ErrType.wrong_username_or_pwd
 
-    def add_user(self, admin, user):
+    def add_user(self, admin, pwd, expire_time, trans_limit=-1, trans_used=0):
         self.__lock_port.acquire()
 
         port = self.__alloc_port()
-        self.__db.add_user(port, user.pwd, user.expire_time, user.trans_limit, user.trans_used, admin.name)
+        self.__db.add_user(port, pwd, expire_time, trans_limit, trans_used, admin)
 
         self.__lock_port.release()
 
         if port is 0xFFFF:
-            return False
+            return Manager.ErrType.alloc_port_failed
         else:
             return port
 
     def del_user(self, admin, user):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
         self.stop_user(admin, user)
-        self.__db.del_user(user.port)
+        self.__db.del_user(user)
         return True
 
     def start_user(self, admin, user):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        return self.__conn.add_port(user.port, user.pwd)
+        pwd, expire_time, trans_limit, trans_used, _, admin = self.__db.get_user_data(user)
+        dt = expire_time - datetime.datetime.now()
+
+        if dt.total_seconds() <= 0:
+            return Manager.ErrType.user_expired
+
+        if trans_limit != -1 and trans_limit < trans_used + self.__port_trans[user]:
+            return Manager.ErrType.user_reached_limit
+
+        if self.__conn.add_port(user, pwd):
+            return Manager.ErrType.OK
+        else:
+            return Manager.ErrType.server_refused
 
     def stop_user(self, admin, user):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        return self.__conn.remove_port(user.port)
+        if self.__conn.remove_port(user):
+            return Manager.ErrType.OK
+        else:
+            return Manager.ErrType.port_closed
 
     def enable_user(self, admin, user):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        self.__db.enable_user(user.port)
+        self.__db.enable_user(user)
         return True
 
     def disable_user(self, admin, user):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        self.__db.disable_user(user.port)
+        self.__db.disable_user(user)
         return True
 
-    def change_user_pwd(self, admin, user):
+    def change_user_pwd(self, admin, user, pwd):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        self.__db.change_pwd(user.port, user.pwd)
+        self.__db.change_pwd(user, pwd)
         return True
 
-    def update_user_used(self, admin, user):
+    def update_user_used(self, admin, user, trans_used):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        self.__db.update_used(user.port, user.trans_used)
+        self.__db.update_used(user, trans_used)
         return True
 
-    def change_user_expire(self, admin, user):
+    def change_user_expire(self, admin, user, expire_time):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        self.__db.change_expire(user.port, user.expire_time)
+        self.__db.change_expire(user, expire_time)
         return True
 
-    def change_user_limit(self, admin, user):
+    def change_user_limit(self, admin, user, trans_limit):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        self.__db.change_limit(user.port, user.trans_limit)
+        self.__db.change_limit(user, trans_limit)
         return True
 
     def change_user_admin(self, admin, user, new_admin_name):
         if not self.__verify_admin(admin, user):
-            return False
+            return Manager.ErrType.permission_denied
 
-        # TODO unfinished
-        return False
-        self.__db.change_admin(user.port, new_admin_name)
+        self.__db.change_admin(user, new_admin_name)
         return True
 
     def get_stat(self, port):
         if port in self.__port_trans.keys():
             return self.__port_trans[port]
         else:
-            return -1
-
-
-class User:
-    def __init__(self, port=0, pwd="", expire_time=datetime.datetime(1980, 1, 1, 0, 0),
-                 trans_limit=0, trans_used=0, enabled=False, started=False, admin=""):
-        self.port = port
-        self.pwd = pwd
-        self.expire_time = expire_time
-        self.trans_limit = trans_limit
-        self.trans_used = trans_used
-        self.enabled = enabled
-        self.started = started
-        self.admin = admin
-
-    def __repr__(self):
-        return repr((self.port, self.pwd, self.expire_time.strftime("%Y-%m-%d %H:%M:%S"),
-                     self.trans_limit, self.trans_used, self.enabled, self.started, self.admin))
-
-
-class Admin:
-
-    class ErrType(Enum):
-        OK = 0
-
-        no_available_port = 1
-        no_such_user = 2
-        manager_refused = 3
-        start_failed = 4
-        expired = 5
-
-    def __init__(self, name='', users={}, manager=None):
-        self.name = name
-        self.__users = users
-        self.__manager = manager
-
-    def __update(self):
-        now = datetime.datetime.now()
-        for user in self.__users.values():
-            dt = (user.expire_time - now).total_seconds()
-            if dt <= 0:
-                self.stop_user(user.port)
-                self.disable_user(user.port)
-            # TODO trans_limit
-
-    def __verify_port(self, port):
-        if port not in self.__users.keys():
-            print('port %d not found' % port)
-            print('ports: ' + str(self.__users.keys()))
-            return False
-        return True
-
-    def add_user(self, pwd, expire_time, trans_limit):
-        new_user = User(pwd=pwd, expire_time=expire_time, trans_limit=trans_limit, admin=self.name)
-        port = self.__manager.add_user(self, new_user)
-
-        if port is False:
-            return Admin.ErrType.no_available_port
-
-        new_user.port = port
-        self.__users[port] = new_user
-
-        return new_user
-
-    def del_user(self, port):
-        if not self.__verify_port(port):
-            return Admin.ErrType.no_such_user
-
-        if self.__manager.del_user(self, self.__users[port]):
-            self.__users.pop(port)
-            return Admin.ErrType.OK
-        else:
-            return Admin.ErrType.manager_refused
-
-    def start_user(self, port):
-        if not self.__verify_port(port):
-            return Admin.ErrType.no_such_user
-
-        # TODO Check limit
-        now = datetime.datetime.now()
-        if (self.__users[port].expire_time - now).total_seconds() <= 0:
-            return Admin.ErrType.expired
-
-        if self.__manager.start_user(self, self.__users[port]):
-            self.__users[port].started = True
-            return Admin.ErrType.OK
-        else:
-            return Admin.ErrType.start_failed
-
-    def stop_user(self, port):
-        if not self.__verify_port(port):
-            return Admin.ErrType.no_such_user
-
-        if self.__manager.stop_user(self, self.__users[port]):
-            self.__users[port].started = False
-            return Admin.ErrType.OK
-        else:
-            return Admin.ErrType.manager_refused
-
-    def enable_user(self, port):
-        if not self.__verify_port(port):
-            return Admin.ErrType.no_such_user
-
-        if self.__manager.enable_user(self, self.__users[port]):
-            self.__users[port].enabled = True
-            return Admin.ErrType.OK
-        else:
-            return Admin.ErrType.manager_refused
-
-    def disable_user(self, port):
-        if not self.__verify_port(port):
-            return Admin.ErrType.no_such_user
-
-        if self.__manager.disable_user(self, self.__users[port]):
-            self.__users[port].enabled = False
-            return Admin.ErrType.OK
-        else:
-            return Admin.ErrType.manager_refused
-
-    def change_user_pwd(self, port, pwd):
-        if not self.__verify_port(port):
-            return Admin.ErrType.no_such_user
-
-        old_pwd = self.__users[port].pwd
-        self.__users[port].pwd = pwd
-
-        if self.__manager.change_user_pwd(self, self.__users[port]):
-            result = self.stop_user(port)
-            if result is not Admin.ErrType.OK:
-                return result
-            result = self.start_user(port)
-            return result
-        else:
-            self.__users[port].pwd = old_pwd
-            return Admin.ErrType.manager_refused
-
-    def change_user_expire(self, port, expire_time):
-        if not self.__verify_port(port):
-            return Admin.ErrType.no_such_user
-
-        old_time = self.__users[port].expire_time
-        self.__users[port].expire_time = expire_time
-
-        if self.__manager.change_user_expire(self, self.__users[port]):
-            return Admin.ErrType.OK
-        else:
-            self.__users[port].expire_time = old_time
-            return Admin.ErrType.manager_refused
-
-    def change_user_limit(self, port, trans_limit):
-        if not self.__verify_port(port):
-            return Admin.ErrType.no_such_user
-
-        old_limit = self.__users[port].trans_limit
-        self.__users[port].trans_limit = trans_limit
-
-        if self.__manager.change_user_limit(self, self.__users[port]):
-            return Admin.ErrType.OK
-        else:
-            self.__users[port].trans_limit = old_limit
-            return Admin.ErrType.manager_refused
+            return Manager.ErrType.wrong_username_or_pwd
