@@ -247,7 +247,8 @@ class Manager:
         now = datetime.datetime.now()
 
         for port in stat.keys():
-            self.__port_trans[int(port)] = stat[port]
+            port = int(port)
+            self.__port_trans[port] = stat[port]
             _, expire_time, trans_limit, trans_used, _, admin = self.__db.get_user_data(port)
 
             # TODO: err handle: get NULL DATA

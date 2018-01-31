@@ -36,7 +36,11 @@ class ManageConn:
 
         data = recv_data[pos:]
 
-        return json.loads(data)
+        status = json.loads(data)
+        result = {}
+        for key in status.keys():
+            result[int(key)] = status[key]
+        return result 
 
     def add_port(self, port, pwd):
 
