@@ -1,8 +1,11 @@
 import socket
 import json
+import logging
 
 BUF_SIZE = 1506
 BACK_LOG = 10
+
+logger = logging.getLogger('ss_manager')
 
 
 class ManageConn:
@@ -16,12 +19,14 @@ class ManageConn:
 
     def connect(self):
         if self.__sock is None:
+            logger.error('Can not create socket')
             return False
 
         try:
             self.__sock.bind(self.__client_addr)
             self.__sock.connect(self.__manage_addr)
         except socket.error:
+            logger.error('Can not bind address or connect to server')
             return False
 
         return True
@@ -46,7 +51,7 @@ class ManageConn:
 
         exist_ports = self.get_stat().keys()
         if str(port) in exist_ports:
-            print("ERROR: Conn: port exist")
+            logger.info("Port exist")
             return False
 
         cmd = 'add: {"server_port": %d, "password": "%s"}' % (port, pwd)
@@ -54,7 +59,7 @@ class ManageConn:
         recv = self.__sock.recv(BUF_SIZE).decode('ascii')
 
         if recv.find('ok') is -1:
-            print("ERROR: Conn: port add failed. " + recv)
+            logger.error("Port add failed. " + recv)
             return False
         else:
             return True
@@ -62,7 +67,7 @@ class ManageConn:
     def remove_port(self, port):
         exist_ports = self.get_stat().keys()
         if str(port) not in exist_ports:
-            print("ERROR: Conn: port not exist")
+            logger.info("Port not exist")
             return False
 
         cmd = 'remove: {"server_port": %d}' % (port)
@@ -70,7 +75,7 @@ class ManageConn:
         recv = self.__sock.recv(BUF_SIZE).decode('ascii')
 
         if recv.find('ok') is -1:
-            print("ERROR: Conn: port rm failed. " + recv)
+            logger.error("Port rm failed. " + recv)
             return False
         else:
             return True

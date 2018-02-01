@@ -2,9 +2,12 @@ import threading
 import sqlite3
 import datetime
 import time
+import logging
 import conn
 
 from enum import Enum
+
+logger = logging.getLogger('ss_manager')
 
 
 # TODO SQL operate need to be changed for safe reason
@@ -16,7 +19,7 @@ class DBOperator:
         self.__db.close()
 
     def init_db(self):
-        print("Init DB")
+        logger.info('Init DB')
         cursor = self.__db.cursor()
         cursor.execute('create table User '
                        '(port INT PRIMARY KEY, pwd VARCHAR(24), expire_time FLOAT, '
@@ -90,11 +93,12 @@ class DBOperator:
             cursor.execute('select port from User')
 
         result = cursor.fetchall()
-        print(admin + " get_all_users() result: " + str(result))
+        logger.debug('result: %s', str(result))
         cursor.close()
         if len(result):
             return [row[0] for row in result]
         else:
+            logger.warning('Got no result')
             return []
 
     def get_user_data(self, port):
@@ -107,6 +111,7 @@ class DBOperator:
             return result[0][0], datetime.datetime.fromtimestamp(result[0][1]), \
                    result[0][2], result[0][3], result[0][4] is 1, result[0][5]
         else:
+            logger.warning('Got no data')
             return None, None, None, None, None, None
 
     def get_enabled_users(self):
@@ -123,6 +128,7 @@ class DBOperator:
         try:
             cursor.execute('insert into Admin (username, pwd) VALUES ("%s", "%s")' % (name, pwd))
         except sqlite3.IntegrityError:
+            logger.warning('Admin name exist')
             return False
 
         cursor.close()
@@ -147,17 +153,6 @@ class DBOperator:
         result = cursor.fetchall()
         cursor.close()
         return result
-
-    @staticmethod
-    def debug():
-        op = DBOperator("test.sqlite")
-        op.init_db()
-        op.add_admin('henry', '123')
-        op.add_user(2333, 'likaijie', datetime.datetime(2088, 12, 30, 12, 00), 123, 123, 'henry')
-        op.add_user(23331, 'likaijie', datetime.datetime(2018, 1, 22, 12, 00), 222, 0, 'henry')
-        op.add_user(23332, 'likaijie', datetime.datetime(2028, 1, 11, 12, 00), 222, 0, 'henry')
-        print(op.get_all_users())
-        print([op.get_user_data(user) for user in op.get_all_users()])
 
 
 class Manager:
@@ -193,7 +188,7 @@ class Manager:
 
         for user in enabled_users:
             result = self.start_user(user[1], user[0])
-            print(str(user[0]) + ': ' + str(result))
+            logger.info('Starting enabled user %d, result: %s', user[0], str(result))
 
         self.__manage_thread_is_run = True
         self.__manage_thread.start()
@@ -215,6 +210,7 @@ class Manager:
             for admin in admins:
                 self.__admins[admin[0]] = admin[1]
         except sqlite3.OperationalError:
+            logger.warning('Can not find table in DB, start init DB')
             self.__db.init_db()
 
     @staticmethod
@@ -253,17 +249,20 @@ class Manager:
 
             # TODO: err handle: get NULL DATA
             if expire_time is None:
+                logger.warning('port %d got empty info', port)
                 continue
 
             dt = expire_time - now
             if dt.total_seconds() <= 0 or (trans_limit != -1 and trans_used + stat[port] > trans_limit):
+                logger.info('port %d expired or reach the limit.Expire time: %s, Limit: %d, Used: %d',
+                            expire_time.strftime('%Y-%m-%d %H:%M:%S'), trans_limit, trans_used)
                 self.stop_user(admin, port)
                 self.disable_user(admin, port)
 
     def __verify_admin(self, admin, user):
         users = self.__db.get_all_users(admin)
         if user not in users:
-            print('verify_admin failed, admin: ' + admin + ', user: ' + user)
+            logger.info('verify_admin failed, admin: %s, user: %d', admin, user)
             return False
 
         return True
@@ -279,7 +278,7 @@ class Manager:
         if username in self.__admins.keys() and pwd is self.__admins[username]:
             return Manager.ErrType.OK
         else:
-            print("ERROR: admins:" + str(self.__admins) + (', input: %s, %s' % (username, pwd)))
+            logger.debug("admins:" + str(self.__admins) + (', input: %s, %s' % (username, pwd)))
             return Manager.ErrType.wrong_username_or_pwd
 
     def add_user(self, admin, pwd, expire_time, trans_limit=-1, trans_used=0):
@@ -301,7 +300,7 @@ class Manager:
 
         self.stop_user(admin, user)
         self.__db.del_user(user)
-        return True
+        return Manager.ErrType.OK
 
     def start_user(self, admin, user):
         if not self.__verify_admin(admin, user):
@@ -335,49 +334,66 @@ class Manager:
             return Manager.ErrType.permission_denied
 
         self.__db.enable_user(user)
-        return True
+        return Manager.ErrType.OK
 
     def disable_user(self, admin, user):
         if not self.__verify_admin(admin, user):
             return Manager.ErrType.permission_denied
 
         self.__db.disable_user(user)
-        return True
+        return Manager.ErrType.OK
 
     def change_user_pwd(self, admin, user, pwd):
         if not self.__verify_admin(admin, user):
             return Manager.ErrType.permission_denied
 
         self.__db.change_pwd(user, pwd)
-        return True
+        return Manager.ErrType.OK
 
     def update_user_used(self, admin, user, trans_used):
         if not self.__verify_admin(admin, user):
             return Manager.ErrType.permission_denied
 
         self.__db.update_used(user, trans_used)
-        return True
+        return Manager.ErrType.OK
 
     def change_user_expire(self, admin, user, expire_time):
         if not self.__verify_admin(admin, user):
             return Manager.ErrType.permission_denied
 
         self.__db.change_expire(user, expire_time)
-        return True
+        return Manager.ErrType.OK
 
     def change_user_limit(self, admin, user, trans_limit):
         if not self.__verify_admin(admin, user):
             return Manager.ErrType.permission_denied
 
         self.__db.change_limit(user, trans_limit)
-        return True
+        return Manager.ErrType.OK
 
     def change_user_admin(self, admin, user, new_admin_name):
         if not self.__verify_admin(admin, user):
             return Manager.ErrType.permission_denied
 
         self.__db.change_admin(user, new_admin_name)
-        return True
+        return Manager.ErrType.OK
+
+    def get_users_info(self, admin):
+        if admin not in self.__admins.keys():
+            return Manager.ErrType.permission_denied
+
+        result = []
+        ports = self.__db.get_all_users(admin)
+        for port in ports:
+            pwd, expire_time, trans_limit, trans_used, enabled, _ = self.__db.get_user_data(port)
+            started = port in self.__port_trans.keys()
+            if started:
+                trans_used += self.__port_trans[port]
+            user = {'port': port, 'pwd': pwd, 'expire_time': expire_time.timestamp(), 'trans_limit': trans_limit,
+                    'trans_used': trans_used, 'enabled': enabled, 'started': started, 'admin': admin}
+            result.append(user)
+
+        return result
 
     def get_stat(self, port):
         if port in self.__port_trans.keys():
