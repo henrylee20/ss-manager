@@ -23,7 +23,7 @@ online_admin = {}
 
 def verify_login(uid):
     for iter in online_admin.items():
-        if uid is iter[1]:
+        if uid == iter[1]:
             return iter[0]
     return None
 
@@ -53,7 +53,7 @@ def login():
 
     result = manager.admin_login(username, pwd)
     if result is Manager.ErrType.OK:
-        uid = uuid.uuid3(uuid.NAMESPACE_OID, username + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        uid = str(uuid.uuid3(uuid.NAMESPACE_OID, username + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         online_admin[username] = uid
         return uid
     else:
@@ -302,15 +302,20 @@ def get_users_info():
     result = manager.get_users_info(admin)
 
     if type(result) is list:
-        return result
+        return str(result)
     else:
         return FAILED + str(result)
 
 
 def main(argv=None):
     logger.debug('server start')
-    run(host='0.0.0.0', port=8080)
-    return 0
+    server_started = manager.start_manage()
+    if server_started is Manager.ErrType.OK:
+        run(host='0.0.0.0', port=8080)
+        return 0
+    else:
+        logger.critical('Manager start failed. %s', str(server_started))
+        return 1
 
     print('Server start: ' + str(manager.start_manage()))
 

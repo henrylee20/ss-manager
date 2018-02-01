@@ -3,6 +3,7 @@ import sqlite3
 import datetime
 import time
 import logging
+import os
 import conn
 
 from enum import Enum
@@ -169,6 +170,10 @@ class Manager:
         port_closed = 9
 
     def __init__(self, client_addr, manage_addr, db_filename):
+        if os.path.exists(client_addr):
+            logger.warning("Client socket exist! deleting it. File: %s", client_addr)
+            os.remove(client_addr)
+
         self.__conn = conn.ManageConn(client_addr, manage_addr)
         self.__db = DBOperator(db_filename)
         self.__admins = {}
@@ -183,6 +188,7 @@ class Manager:
     def start_manage(self):
         if not self.__conn.connect():
             return Manager.ErrType.server_not_connect
+        logger.debug('SS Server connected')
 
         enabled_users = self.__db.get_enabled_users()
 
@@ -192,7 +198,6 @@ class Manager:
 
         self.__manage_thread_is_run = True
         self.__manage_thread.start()
-        self.__manage_thread.join()
 
         return Manager.ErrType.OK
 
@@ -200,6 +205,7 @@ class Manager:
         self.__manage_thread_is_run = False
 
     def manage_thread(self, arg):
+        logger.debug('Manager thread started')
         while self.__manage_thread_is_run:
             self.__update_stat()
             time.sleep(60)
@@ -275,10 +281,11 @@ class Manager:
             return Manager.ErrType.user_exist
 
     def admin_login(self, username, pwd):
-        if username in self.__admins.keys() and pwd is self.__admins[username]:
+        if username in self.__admins.keys() and pwd == self.__admins[username]:
             return Manager.ErrType.OK
         else:
-            logger.debug("admins:" + str(self.__admins) + (', input: %s, %s' % (username, pwd)))
+            logger.debug("admins:" + str(self.__admins) + (', input: [%s], [%s]' % (username, pwd)))
+            logger.debug("test result:" + str(username in self.__admins.keys()) + " and " + str(pwd is self.__admins[username]))
             return Manager.ErrType.wrong_username_or_pwd
 
     def add_user(self, admin, pwd, expire_time, trans_limit=-1, trans_used=0):
