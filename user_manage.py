@@ -222,7 +222,7 @@ class Manager:
     @staticmethod
     def __find_available_port(exist_ports):
         result = 0xFFFF
-        min_port = 23000
+        min_port = 23331
 
         if len(exist_ports):
             min_port = min(exist_ports)
@@ -274,6 +274,9 @@ class Manager:
         return True
 
     def add_admin(self, username, pwd):
+        if username == "" or pwd == "":
+            return Manager.ErrType.wrong_username_or_pwd
+
         if self.__db.add_admin(username, pwd):
             self.__admins[username] = pwd
             return Manager.ErrType.OK
@@ -396,6 +399,15 @@ class Manager:
             started = port in self.__port_trans.keys()
             if started:
                 trans_used += self.__port_trans[port]
+                started = 1
+            else:
+                started = 0
+
+            if enabled:
+                enabled = 1
+            else:
+                enabled = 0
+
             user = {'port': port, 'pwd': pwd, 'expire_time': expire_time.timestamp(), 'trans_limit': trans_limit,
                     'trans_used': trans_used, 'enabled': enabled, 'started': started, 'admin': admin}
             result.append(user)

@@ -323,7 +323,7 @@ def main(argv=None):
 
     print("Login: " + str(manager.admin_login('henrylee', 'likaijie')))
 
-    port = manager.add_user('henrylee', '123123', datetime.datetime(2018, 2, 1))
+    port = manager.add_user('henrylee', '123123', datetime.datetime(2018, 2, 3))
     if port is 0:
         print("Add port failed")
         return 1
