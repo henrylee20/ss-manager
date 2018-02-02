@@ -228,7 +228,7 @@ class Manager:
     @staticmethod
     def __find_available_port(exist_ports):
         result = 0xFFFF
-        min_port = 23331
+        min_port = 23000
 
         if len(exist_ports):
             min_port = min(exist_ports)
@@ -329,7 +329,7 @@ class Manager:
         if not self.__verify_admin(admin, user):
             return Manager.ErrType.permission_denied
 
-        pwd, expire_time, trans_limit, trans_used, _, admin = self.__db.get_user_data(user)
+        pwd, expire_time, trans_limit, trans_used, _, admin, _, _ = self.__db.get_user_data(user)
         dt = expire_time - datetime.datetime.now()
 
         if dt.total_seconds() <= 0:

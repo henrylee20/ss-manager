@@ -352,6 +352,7 @@ def main(argv=[]):
     db_addr = argv[3]
     http_port = int(argv[4])
 
+    global manager
     manager = Manager(client_addr, manage_addr, db_addr)
     server_started = manager.start_manage()
     if server_started is Manager.ErrType.OK:
