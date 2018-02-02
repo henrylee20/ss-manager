@@ -222,7 +222,7 @@ def disable_user():
 def change_user_pwd():
     uid = request.query.uid
     port = request.query.port
-    used = request.query.pwd
+    pwd = request.query.pwd
 
     if uid is None or port is None or pwd is None:
         return FAILED + "Not enough params"
