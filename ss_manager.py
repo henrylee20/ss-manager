@@ -11,13 +11,16 @@ OK = "OK"
 logger = logging.getLogger('ss_manager')
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
+ch.setLevel(logging.WARNING)
+fh = logging.FileHandler('/var/log/ss_manager.log')
+fh.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(module)s.%(funcName)s [%(levelname)s]: %(message)s')
 ch.setFormatter(formatter)
+fh.setFormatter(formatter)
 logger.addHandler(ch)
+logger.addHandler(fh)
 
-manager = Manager('/tmp/client.sock', '/tmp/manage.sock', '/tmp/test.sqlite')
-
+manager = None
 online_admin = {}
 
 
@@ -288,6 +291,31 @@ def change_user_expire():
         return FAILED + str(result)
 
 
+@route('/change_nickname')
+def change_nickname():
+    uid = request.query.uid
+    port = request.query.port
+    nickname = request.query.nickname
+
+    if uid is None or port is None or nickname is None:
+        return FAILED + "Not enough params"
+
+    admin = verify_login(uid)
+    if admin is None:
+        return FAILED + "Wrong login"
+
+    try:
+        port = int(port)
+    except ValueError:
+        return FAILED + "Wrong param type"
+
+    result = manager.change_user_nickname(admin, port, nickname)
+    if result is Manager.ErrType.OK:
+        return OK
+    else:
+        return FAILED + str(result)
+
+
 @route('/get_users_info')
 def get_users_info():
     uid = request.query.uid
@@ -307,31 +335,26 @@ def get_users_info():
         return FAILED + str(result)
 
 
-def main(argv=None):
+def main(argv=[]):
     logger.debug('server start')
+
+    if len(argv) != 5:
+        print("Usage: ss_manager client_addr manage_addr DB_path HTTP_port")
+        return 0
+
+    client_addr = argv[1]
+    manage_addr = argv[2]
+    db_addr = argv[3]
+    http_port = int(argv[4])
+
+    manager = Manager(client_addr, manage_addr, db_addr)
     server_started = manager.start_manage()
     if server_started is Manager.ErrType.OK:
-        run(host='0.0.0.0', port=8080)
+        run(host='0.0.0.0', port=http_port)
         return 0
     else:
         logger.critical('Manager start failed. %s', str(server_started))
         return 1
-
-    print('Server start: ' + str(manager.start_manage()))
-
-    manager.add_admin('henrylee', 'likaijie')
-
-    print("Login: " + str(manager.admin_login('henrylee', 'likaijie')))
-
-    port = manager.add_user('henrylee', '123123', datetime.datetime(2018, 2, 3))
-    if port is 0:
-        print("Add port failed")
-        return 1
-
-    print("Added port: " + str(port))
-    print("Start port: " + str(manager.start_user('henrylee', port)))
-    print("Enable port: " + str(manager.enable_user('henrylee', port)))
-
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))

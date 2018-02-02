@@ -24,17 +24,17 @@ class DBOperator:
         cursor = self.__db.cursor()
         cursor.execute('create table User '
                        '(port INT PRIMARY KEY, pwd VARCHAR(24), expire_time FLOAT, '
-                       'trans_limit BIGINT, trans_used BIGINT, enabled INT, admin VARCHAR(24))')
+                       'trans_limit BIGINT, trans_used BIGINT, enabled INT, admin VARCHAR(24), tmp INT, nickname VARCHAR(24))')
         cursor.execute('create table Admin '
                        '(username VARCHAR(24) PRIMARY KEY, pwd VARCHAR(24))')
         cursor.close()
         self.__db.commit()
 
-    def add_user(self, port, pwd, expire_time, trans_limit, trans_used, admin_name):
+    def add_user(self, port, pwd, expire_time, trans_limit, trans_used, admin_name, is_tmp, nickname):
         cursor = self.__db.cursor()
-        cursor.execute('insert into User (port, pwd, expire_time, trans_limit, trans_used, enabled, admin) '
-                       'VALUES (%d, "%s", %f, %d, %d, %d, "%s")' %
-                       (port, pwd, expire_time.timestamp(), trans_limit, trans_used, 0, admin_name))
+        cursor.execute('insert into User (port, pwd, expire_time, trans_limit, trans_used, enabled, admin, tmp, nickname) '
+                       'VALUES (%d, "%s", %f, %d, %d, %d, "%s", %d, "%s")' %
+                       (port, pwd, expire_time.timestamp(), trans_limit, trans_used, 0, admin_name, is_tmp, nickname))
         cursor.close()
         self.__db.commit()
 
@@ -82,7 +82,13 @@ class DBOperator:
 
     def change_admin(self, port, admin):
         cursor = self.__db.cursor()
-        cursor.execute('update User set admin = "%s", where port = %d' % (admin, port))
+        cursor.execute('update User set admin = "%s" where port = %d' % (admin, port))
+        cursor.close()
+        self.__db.commit()
+
+    def change_nickname(self, port, nickname):
+        cursor = self.__db.cursor()
+        cursor.execute('update User set nickname = "%s" where port = %d' % (nickname, port))
         cursor.close()
         self.__db.commit()
 
@@ -104,16 +110,16 @@ class DBOperator:
 
     def get_user_data(self, port):
         cursor = self.__db.cursor()
-        cursor.execute('select pwd, expire_time, trans_limit, trans_used, enabled, admin '
+        cursor.execute('select pwd, expire_time, trans_limit, trans_used, enabled, admin, tmp, nickname '
                        'from User where port = %d' % port)
         result = cursor.fetchall()
         cursor.close()
         if len(result):
             return result[0][0], datetime.datetime.fromtimestamp(result[0][1]), \
-                   result[0][2], result[0][3], result[0][4] is 1, result[0][5]
+                   result[0][2], result[0][3], result[0][4] is 1, result[0][5], result[0][6], result[0][7]
         else:
             logger.warning('Got no data')
-            return None, None, None, None, None, None
+            return None, None, None, None, None, None, None, None
 
     def get_enabled_users(self):
         cursor = self.__db.cursor()
@@ -188,7 +194,7 @@ class Manager:
     def start_manage(self):
         if not self.__conn.connect():
             return Manager.ErrType.server_not_connect
-        logger.debug('SS Server connected')
+        logger.info('SS Server connected')
 
         enabled_users = self.__db.get_enabled_users()
 
@@ -251,7 +257,7 @@ class Manager:
         for port in stat.keys():
             port = int(port)
             self.__port_trans[port] = stat[port]
-            _, expire_time, trans_limit, trans_used, _, admin = self.__db.get_user_data(port)
+            _, expire_time, trans_limit, trans_used, _, admin, is_tmp, _ = self.__db.get_user_data(port)
 
             # TODO: err handle: get NULL DATA
             if expire_time is None:
@@ -260,10 +266,12 @@ class Manager:
 
             dt = expire_time - now
             if dt.total_seconds() <= 0 or (trans_limit != -1 and trans_used + stat[port] > trans_limit):
-                logger.info('port %d expired or reach the limit.Expire time: %s, Limit: %d, Used: %d',
-                            expire_time.strftime('%Y-%m-%d %H:%M:%S'), trans_limit, trans_used)
+                logger.info('port %d expired or reach the limit.Expire time: %s, Limit: %d, Used: %d, is_tmp: %d',
+                            expire_time.strftime('%Y-%m-%d %H:%M:%S'), trans_limit, trans_used, is_tmp)
                 self.stop_user(admin, port)
                 self.disable_user(admin, port)
+                if is_tmp:
+                    self.del_user(admin, port)
 
     def __verify_admin(self, admin, user):
         users = self.__db.get_all_users(admin)
@@ -275,6 +283,7 @@ class Manager:
 
     def add_admin(self, username, pwd):
         if username == "" or pwd == "":
+            logger.info("empty username or password")
             return Manager.ErrType.wrong_username_or_pwd
 
         if self.__db.add_admin(username, pwd):
@@ -291,18 +300,22 @@ class Manager:
             logger.debug("test result:" + str(username in self.__admins.keys()) + " and " + str(pwd is self.__admins[username]))
             return Manager.ErrType.wrong_username_or_pwd
 
-    def add_user(self, admin, pwd, expire_time, trans_limit=-1, trans_used=0):
+    def add_user(self, admin, pwd, expire_time, trans_limit=-1, trans_used=0, is_tmp=0, nickname=''):
         self.__lock_port.acquire()
 
         port = self.__alloc_port()
-        self.__db.add_user(port, pwd, expire_time, trans_limit, trans_used, admin)
+        if port is 0xFFFF:
+            logger.warning("Alloc port failed")
+            self.__lock_port.release()
+            return Manager.ErrType.alloc_port_failed
 
+        if nickname == '':
+            nickname = 'user%d' % port
+
+        self.__db.add_user(port, pwd, expire_time, trans_limit, trans_used, admin, is_tmp, nickname)
         self.__lock_port.release()
 
-        if port is 0xFFFF:
-            return Manager.ErrType.alloc_port_failed
-        else:
-            return port
+        return port
 
     def del_user(self, admin, user):
         if not self.__verify_admin(admin, user):
@@ -388,6 +401,13 @@ class Manager:
         self.__db.change_admin(user, new_admin_name)
         return Manager.ErrType.OK
 
+    def change_user_nickname(self, admin, user, new_nickname):
+        if not self.__verify_admin(admin, user):
+            return Manager.ErrType.permission_denied
+
+        self.__db.change_nickname(user, new_nickname)
+        return Manager.ErrType.OK
+
     def get_users_info(self, admin):
         if admin not in self.__admins.keys():
             return Manager.ErrType.permission_denied
@@ -395,21 +415,17 @@ class Manager:
         result = []
         ports = self.__db.get_all_users(admin)
         for port in ports:
-            pwd, expire_time, trans_limit, trans_used, enabled, _ = self.__db.get_user_data(port)
+            pwd, expire_time, trans_limit, trans_used, enabled, _, is_tmp, nickname = self.__db.get_user_data(port)
             started = port in self.__port_trans.keys()
             if started:
                 trans_used += self.__port_trans[port]
-                started = 1
-            else:
-                started = 0
 
-            if enabled:
-                enabled = 1
-            else:
-                enabled = 0
+            started = int(started)
+            enabled = int(enabled)
 
             user = {'port': port, 'pwd': pwd, 'expire_time': expire_time.timestamp(), 'trans_limit': trans_limit,
-                    'trans_used': trans_used, 'enabled': enabled, 'started': started, 'admin': admin}
+                    'trans_used': trans_used, 'enabled': enabled, 'started': started, 'admin': admin, 
+                    'is_tmp': is_tmp, 'nickname': nickname}
             result.append(user)
 
         return result
