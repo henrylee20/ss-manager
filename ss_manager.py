@@ -12,7 +12,8 @@ logger = logging.getLogger('ss_manager')
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.WARNING)
-fh = logging.FileHandler('/var/log/ss_manager.log')
+#fh = logging.FileHandler('/var/log/ss_manager.log')
+fh = logging.FileHandler('ss_manager.log')
 fh.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(module)s.%(funcName)s [%(levelname)s]: %(message)s')
 ch.setFormatter(formatter)
@@ -70,6 +71,9 @@ def add_user():
     expire_time = request.query.expire_time
     limit = request.query.limit or -1
     used = request.query.used or 0
+    is_tmp = request.query.is_tmp or 0
+    nickname = request.query.nickname or ""
+    
 
     if uid is None or pwd is None or expire_time is None:
         return FAILED + "Not enough params"
@@ -82,10 +86,11 @@ def add_user():
         expire_time = float(expire_time)
         limit = int(limit)
         used = int(used)
+        is_tmp = int(is_tmp)
     except ValueError:
         return FAILED + "Wrong param type"
 
-    port = manager.add_user(admin, pwd, datetime.datetime.fromtimestamp(expire_time), limit, used)
+    port = manager.add_user(admin, pwd, datetime.datetime.fromtimestamp(expire_time), limit, used, is_tmp, nickname)
 
     if port is Manager.ErrType.alloc_port_failed:
         return FAILED + str(port)
