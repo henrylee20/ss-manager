@@ -218,6 +218,31 @@ def disable_user():
         return FAILED + str(result)
 
 
+@route('/change_user_pwd')
+def change_user_pwd():
+    uid = request.query.uid
+    port = request.query.port
+    used = request.query.pwd
+
+    if uid is None or port is None or pwd is None:
+        return FAILED + "Not enough params"
+
+    admin = verify_login(uid)
+    if admin is None:
+        return FAILED + "Wrong login"
+
+    try:
+        port = int(port)
+    except ValueError:
+        return FAILED + "Wrong param type"
+
+    result = manager.change_user_pwd(admin, port, pwd)
+    if result is Manager.ErrType.OK:
+        return OK
+    else:
+        return FAILED + str(result)
+
+
 @route('/change_user_used')
 def change_user_used():
     uid = request.query.uid

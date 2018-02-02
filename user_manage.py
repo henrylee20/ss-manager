@@ -313,6 +313,7 @@ class Manager:
             nickname = 'user%d' % port
 
         self.__db.add_user(port, pwd, expire_time, trans_limit, trans_used, admin, is_tmp, nickname)
+        self.__update_stat()
         self.__lock_port.release()
 
         return port
@@ -371,6 +372,8 @@ class Manager:
             return Manager.ErrType.permission_denied
 
         self.__db.change_pwd(user, pwd)
+        if user in self.__port_trans.keys() and self.stop_user(admin, user) == Manager.ErrType.OK:
+            return self.start_user(admin, user)
         return Manager.ErrType.OK
 
     def update_user_used(self, admin, user, trans_used):
